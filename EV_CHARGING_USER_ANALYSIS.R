@@ -21,7 +21,7 @@ install_if_missing("tidyr")
 ## data cleaning and preparation
 
 # load data
-raw_data = read.csv("C:/Users/suman/Downloads/archive (2)/detailed_ev_charging_stations.csv",header=T)
+raw_data = read.csv("detailed_ev_charging_stations.csv",header=T)
 
 # remove columns that won't be used in the project
 data <- subset(raw_data,select=-c(Station.ID,Address,Connector.Types))
