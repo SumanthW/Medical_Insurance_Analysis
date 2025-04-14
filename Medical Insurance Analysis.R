@@ -21,12 +21,10 @@ install_if_missing("tidyr")
 ## data cleaning and preparation
 
 # load data
-### data set #1
-# load data
-ins_data = read.csv("insurance.csv",header=T)
+raw_data = read.csv("insurance.csv",header=T)
 
 # remove four-cat variable
-ins_data <- subset(ins_data,select=-c(region))
+ins_data <- subset(raw_data,select=-c(region))
 
 # check for missing and duplicated data
 sum(is.na(ins_data)) # returns 0
@@ -42,21 +40,51 @@ ins_data$smoker <- gsub("no","0",ins_data$smoker)
 ins_data$sex <- as.numeric(ins_data$sex) 
 ins_data$smoker <- as.numeric(ins_data$smoker) 
 
-plot(ins_data)
-cor(ins_data)
+## descriptive statistics - numeric
 
-model <- lm(charges~.,ins_data)
-summary(model)
-
-## handle station operator categories
-
-# function for replacing characters with binary
-replace_word_with_binary <- function(word, vector) {
-  # Convert vector to logical values: 1 if the word is found, 0 otherwise
-  binary_vector <- ifelse(vector == word, 1, 0)
-  return(binary_vector)
+# remove cat variables
+num_data <- subset(ins_data,select=-c(sex,smoker))
+# new df for statistics
+stats_data <- data.frame(Variable = character(), Mean = numeric(), Median = numeric(),
+                         STDEV = numeric(), Min = numeric(), Max = numeric())
+for (col_name in colnames(num_data)) {
+  col_data <- num_data[[col_name]]
+  stats_data <- rbind(stats_data, data.frame(Column = col_name,
+                                             Mean = round(mean(col_data),2),
+                                             Median = median(col_data),
+                                             STDEV = round(sd(col_data),2),
+                                             Min = min(col_data),
+                                             Max = max(col_data)))
 }
 
+# histograms
+hist(ins_data$age,xlab="Age (Years)",main="Histogram of Age")
+hist(ins_data$bmi,xlab="Body Mass Index",main="Histogram of BMI")
+hist(ins_data$children,xlab="Number of Children",main="Histogram of Children")
+hist(ins_data$charges,xlab="Medical Insurance Charges (USD)",main="Histogram of Charges")
+
+## descriptive statistics - categorical
+
+# mode
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+Mode(ins_data$sex)
+Mode(ins_data$smoker)
+
+# box plots
+charges <- as.factor(ins_data$charges)
+sex <- as.factor(ins_data$sex)
+boxplot(charges ~ sex, 
+        xlab="Sex", 
+        ylab="Medical Insurance Charges (USD)",
+        main="Charges by Sex")
+smoker <- as.factor(ins_data$smoker)
+boxplot(charges ~ smoker, 
+        xlab="Smoking Status", 
+        ylab="Medical Insurance Charges (USD)",
+        main="Charges by Smoking Status")
 
 #Utility functions
 
@@ -275,5 +303,4 @@ display_model_summary(model)
 display_model_summary(step_model)
 display_model_summary(full_model_interaction)
 display_model_summary(step_model2)
-
 
