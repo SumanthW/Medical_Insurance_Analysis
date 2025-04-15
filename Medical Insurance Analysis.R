@@ -158,7 +158,7 @@ test_data <- test_data %>%
   mutate(across(where(is.numeric), ~ ifelse(is.infinite(.) | is.nan(.), NA, .))) %>%  # Convert Inf/NaN to NA
   na.omit()
 
-refined_data
+
 
 
 #Analysis 1 - Correlation matrix & Scatter Plots
@@ -194,30 +194,23 @@ scatter_matrix(train_data,target)
 #Analysis 2: Fit model and check for Null hypothesis that all the parameters are insignificant
 
 
-head(train_data)
 
 # Fit the linear regression model
 formula <- as.formula(paste(target, "~ ."))
 model <- lm(formula, data = train_data)
-View(train_data)
-
-print(refined_data)
 # Summarize the model
 summary(model)
 anova(model)
+
 # Calculate 95% confidence intervals for the coefficients
 conf_intervals <- confint(model, level = 0.95)
 print(conf_intervals)
-
-test_data$y_hat <- predict(model, newdata = test_data)
 
 step_model <- step(model, 
                    direction = "backward")
 
 summary(step_model)
 anova(step_model)
-test_data$y_hat_step <- predict(step_model, newdata = test_data)
-head(test_data[, c(target, "y_hat","y_hat_step")])
 
 #Analysis 3: Build an interaction model and step down
 formula <- as.formula(paste(target, "~ .^2")) 
@@ -228,9 +221,6 @@ summary(full_model_interaction)
 step_model2 <- step(full_model_interaction,direction = "backward")
 summary(step_model2)
 #Computationally expensive!
-test_data$y_hat_full_model_interaction <- predict(full_model_interaction, newdata = test_data)
-test_data$y_hat_full_model_interaction_step <- predict(step_model2, newdata = test_data)
-head(test_data[, c(target, "y_hat","y_hat_step","y_hat_full_model_interaction","y_hat_full_model_interaction_step")])
 
 #Analysis 4: Get Residual Plots
 check_residuals<-function(model){
@@ -251,11 +241,40 @@ check_residuals(step_model2)
 analyze_influence <- function(model){
   influence_stats <- influence.measures(model)
   summary(influence_stats)
+  nrow(summary(influence_stats))
 }
 analyze_influence(model)
 analyze_influence(step_model)
 analyze_influence(full_model_interaction)
 analyze_influence(step_model2)
+nrow(train_data)
+
+#Retraining Model step_model2
+retrain_without_influential <- function(model, data, threshold = NULL) {
+  # Compute Cook's distance
+  cooks_d <- cooks.distance(model)
+  
+  # Default threshold if not provided: 4 / n
+  if (is.null(threshold)) {
+    threshold <- 4 / nrow(data)
+  }
+  
+  # Identify influential rows
+  influential_rows <- which(cooks_d > threshold)
+  
+  # Remove influential rows
+  cleaned_data <- data[-influential_rows, ]
+  
+  # Refit model with original formula
+  updated_model <- lm(formula(model), data = cleaned_data)
+  
+  return(updated_model)
+}
+retrained_model <- retrain_without_influential(step_model2,train_data)
+
+summary(step_model2)
+summary(retrained_model)
+
 
 
 #Analysis 6: Multicollinearity Check: VIF
@@ -303,4 +322,26 @@ display_model_summary(model)
 display_model_summary(step_model)
 display_model_summary(full_model_interaction)
 display_model_summary(step_model2)
+display_model_summary(retrained_model)
 
+evaluate_model <- function(model, test_data, target) {
+  predictions <- predict(model, newdata = test_data)
+  actuals <- test_data[[target]]
+  residuals <- actuals - predictions
+  
+  mae <- mean(abs(residuals))
+  rmse <- sqrt(mean(residuals^2))
+  r2 <- 1 - sum(residuals^2) / sum((actuals - mean(actuals))^2)
+  
+  cat("MAE:", mae, "\n")
+  cat("RMSE:", rmse, "\n")
+  cat("R-squared:", r2, "\n")
+  
+  plot(actuals, predictions,
+       xlab = "Actual", ylab = "Predicted",
+       main = "Predicted vs Actual - Test Data",
+       pch = 19, col = "steelblue")
+  abline(0, 1, col = "red", lwd = 2)
+}
+
+evaluate_model(retrained_model,test_data,target)
