@@ -213,8 +213,9 @@ summary(step_model)
 anova(step_model)
 
 #Analysis 3: Build an interaction model and step down
+train_data_higher_order <- train_data[ , !(names(train_data) %in% "Value.sex")]
 formula <- as.formula(paste(target, "~ .^2")) 
-full_model_interaction <- lm(formula, data = train_data)  
+full_model_interaction <- lm(formula, data = train_data_higher_order)  
 # Summarize the model
 summary(full_model_interaction)
 
@@ -270,16 +271,29 @@ retrain_without_influential <- function(model, data, threshold = NULL) {
   
   return(updated_model)
 }
-retrained_model <- retrain_without_influential(step_model2,train_data)
+retrained_model <- retrain_without_influential(step_model2,train_data_higher_order)
 
 summary(step_model2)
 summary(retrained_model)
 
+check_residuals(retrained_model)
 
+
+formula <- as.formula(paste("log(",target,")", "~ .^2")) 
+logarithmic_model <- lm(formula, data = train_data) 
+summary(logarithmic_model)
+
+check_residuals(logarithmic_model)
+
+step_model3 <- step(logarithmic_model,direction = "backward")
+summary(step_model3)
+
+check_residuals(step_model3)
 
 #Analysis 6: Multicollinearity Check: VIF
 check_VIF <- function(model, model_name) {
   vif_values <- car::vif(model)
+  #vif_values <- car::vif(model, type = 'predictor') #Use this instead for interaction model?
   print(model_name)
   print(vif_values) 
   
@@ -307,8 +321,8 @@ check_VIF <- function(model, model_name) {
 
 check_VIF(model,deparse(substitute(model)))
 check_VIF(step_model,deparse(substitute(step_model)))
-#check_VIF(full_model_interaction,deparse(substitute(full_model_interaction)))
-#check_VIF(step_model2,deparse(substitute(step_model2)))
+check_VIF(full_model_interaction,deparse(substitute(full_model_interaction)))
+check_VIF(step_model2,deparse(substitute(step_model2)))
 
 
 display_model_summary<- function(model) {
@@ -344,4 +358,59 @@ evaluate_model <- function(model, test_data, target) {
   abline(0, 1, col = "red", lwd = 2)
 }
 
+
+Cross_Validate <- function(data,formula) {#Takes data and Returns SSE of full and reduced models
+  # partition data into 10 groups
+  num_groups <- 10
+  print(target)
+  group_labels <- rep(1:10, c(rep(133, 9), 140))
+  group_labels <- sample(group_labels) # shuffle labels
+  data_groups <- data.frame(Value = data, Group = group_labels)
+  
+  train <- list()
+  test <- list()
+  sse_full <- list()
+  sse_reduced <- list()
+  Total_sse_full <- 0
+  Total_sse_reduced <- 0
+  
+  for (i in 1:num_groups) {
+    train[[i]] <- subset(data_groups, Group != i)
+    test[[i]] <- subset(data_groups, Group == i)
+  }
+  
+  for (i in 1:num_groups) {
+    #Fit Full Model
+    model_full <- lm(formula, train[[i]])
+    
+    # predict response values
+    test[[i]]$y_hat_full <- predict(model_full, newdata = test[[i]])
+    
+    # calculate test error sum of squares
+    test[[i]]$err_full <- (test[[i]][[target]] - test[[i]]$y_hat_full)^2
+    sse_full[[i]] <- sum(test[[i]]$err_full)
+    
+    #Fit Model without influence 
+    model_reduced <- retrain_without_influential(model_full,train[[i]])
+    
+    # predict response values
+    test[[i]]$y_hat_reduced <- predict(model_reduced, newdata = test[[i]])
+    
+    # calculate test error sum of squares
+    test[[i]]$err_reduced <- (test[[i]][[target]] - test[[i]]$y_hat_reduced)^2
+    sse_reduced[[i]] <- sum(test[[i]]$err_reduced)
+    
+  }
+  
+  Total_sse_full <- sum(unlist(sse_full))
+  Total_sse_reduced <- sum(unlist(sse_reduced))
+  
+  return(list(SSE_full = Total_sse_full, SSE_reduced = Total_sse_reduced))
+  
+}
+
 evaluate_model(retrained_model,test_data,target)
+
+print(Cross_Validate(refined_data,formula(step_model2)))
+print(Cross_Validate(refined_data,formula(model)))
+anova(model, step_model2) # Lack of fit test
