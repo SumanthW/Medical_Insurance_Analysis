@@ -86,7 +86,7 @@ boxplot(charges ~ smoker,
         ylab="Medical Insurance Charges (USD)",
         main="Charges by Smoking Status")
 
-#Utility functions
+# Utility functions
 
 scatter_matrix <- function(data, response_var = "y") {
   # Check if response_var exists
@@ -133,14 +133,14 @@ scatter_matrix <- function(data, response_var = "y") {
 }
 
 refined_data <- ins_data
-#
-#Scale data
+
+# Scale data
 scaled_data <- scale(refined_data[, sapply(refined_data, is.numeric)])%>% 
   as.data.frame()
 head(scaled_data)
 
 #Split Data
-#num_groups <- 3
+# num_groups <- 3
 group_labels <- rep(1:3, length.out = nrow(refined_data))
 group_labels <- sample(group_labels) # shuffle labels
 data_groups <- data.frame(Value = refined_data, Group = group_labels)
@@ -158,10 +158,7 @@ test_data <- test_data %>%
   mutate(across(where(is.numeric), ~ ifelse(is.infinite(.) | is.nan(.), NA, .))) %>%  # Convert Inf/NaN to NA
   na.omit()
 
-
-
-
-#Analysis 1 - Correlation matrix & Scatter Plots
+# Analysis 1 - Correlation matrix & Scatter Plots
 # Select only numeric columns and compute correlation
 print_correlation <- function(refined_data) {
   cor_matrix <- refined_data %>%
@@ -184,16 +181,13 @@ print_correlation <- function(refined_data) {
 
 target <- "Value.charges"
 
-#Analysis 1 results
+# Analysis 1 results
 print_correlation(refined_data)
-print_correlation(scaled_data)
-#No change in correlation due to scaling
+print_correlation(scaled_data) #no change in correlation due to scaling
 
 scatter_matrix(train_data,target)
 
-#Analysis 2: Fit model and check for Null hypothesis that all the parameters are insignificant
-
-
+# Analysis 2: Fit model and check for null hypothesis that all the parameters are insignificant
 
 # Fit the linear regression model
 formula <- as.formula(paste(target, "~ ."))
@@ -212,7 +206,7 @@ step_model <- step(model,
 summary(step_model)
 anova(step_model)
 
-#Analysis 3: Build an interaction model and step down
+# Analysis 3: Build an interaction model and step down
 train_data_higher_order <- train_data[ , !(names(train_data) %in% "Value.sex")]
 formula <- as.formula(paste(target, "~ .^2")) 
 full_model_interaction <- lm(formula, data = train_data_higher_order)  
@@ -221,9 +215,10 @@ summary(full_model_interaction)
 
 step_model2 <- step(full_model_interaction,direction = "backward")
 summary(step_model2)
-#Computationally expensive!
 
-#Analysis 4: Get Residual Plots
+# Computationally expensive!
+
+# Analysis 4: Get Residual Plots
 check_residuals<-function(model){
   # Residuals vs Fitted with smoother
   residualPlot(model)
@@ -237,60 +232,7 @@ check_residuals(step_model)
 check_residuals(full_model_interaction)
 check_residuals(step_model2)
 
-
-#Analysis 5: Check Hii aka Influence Diagnostics
-analyze_influence <- function(model){
-  influence_stats <- influence.measures(model)
-  summary(influence_stats)
-  nrow(summary(influence_stats))
-}
-analyze_influence(model)
-analyze_influence(step_model)
-analyze_influence(full_model_interaction)
-analyze_influence(step_model2)
-nrow(train_data)
-
-#Retraining Model step_model2
-retrain_without_influential <- function(model, data, threshold = NULL) {
-  # Compute Cook's distance
-  cooks_d <- cooks.distance(model)
-  
-  # Default threshold if not provided: 4 / n
-  if (is.null(threshold)) {
-    threshold <- 4 / nrow(data)
-  }
-  
-  # Identify influential rows
-  influential_rows <- which(cooks_d > threshold)
-  
-  # Remove influential rows
-  cleaned_data <- data[-influential_rows, ]
-  
-  # Refit model with original formula
-  updated_model <- lm(formula(model), data = cleaned_data)
-  
-  return(updated_model)
-}
-retrained_model <- retrain_without_influential(step_model2,train_data_higher_order)
-
-summary(step_model2)
-summary(retrained_model)
-
-check_residuals(retrained_model)
-
-
-formula <- as.formula(paste("log(",target,")", "~ .^2")) 
-logarithmic_model <- lm(formula, data = train_data) 
-summary(logarithmic_model)
-
-check_residuals(logarithmic_model)
-
-step_model3 <- step(logarithmic_model,direction = "backward")
-summary(step_model3)
-
-check_residuals(step_model3)
-
-#Analysis 6: Multicollinearity Check: VIF
+# Analysis 5: Multicollinearity Check: VIF
 check_VIF <- function(model, model_name) {
   vif_values <- car::vif(model)
   #vif_values <- car::vif(model, type = 'predictor') #Use this instead for interaction model?
@@ -324,13 +266,80 @@ check_VIF(step_model,deparse(substitute(step_model)))
 check_VIF(full_model_interaction,deparse(substitute(full_model_interaction)))
 check_VIF(step_model2,deparse(substitute(step_model2)))
 
+# fit new model to reduce multicollinearity of Model D
+# center the input variables
+age <- train_data_higher_order$Value.age - mean(train_data_higher_order$Value.age)
+bmi <- train_data_higher_order$Value.bmi - mean(train_data_higher_order$Value.bmi)
+smoker <- train_data_higher_order$Value.smoker - mean(train_data_higher_order$Value.smoker)
+children <- train_data_higher_order$Value.children - mean(train_data_higher_order$Value.children)
+# create new interaction terms
+train_data_higher_order$Value.age.bmi <- age*bmi
+train_data_higher_order$Value.bmi.smoker <- bmi*smoker
+train_data_higher_order$Value.children.smoker <- children*smoker
+# new model
+formula <- as.formula(paste(target, "~ ."))
+model_e <- lm(formula, data = train_data_higher_order)
+# check VIF
+vif_e <- vif(model_e)
+check_VIF(model_e,deparse(substitute(model_e)))
+check_residuals(model_e)
+
+# Analysis 6: Check Hii aka Influence Diagnostics
+analyze_influence <- function(model){
+  influence_stats <- influence.measures(model)
+  summary(influence_stats)
+  nrow(summary(influence_stats))
+}
+analyze_influence(model)
+analyze_influence(step_model)
+analyze_influence(full_model_interaction)
+analyze_influence(step_model2)
+analyze_influence(model_e)
+nrow(train_data)
+
+# Retraining Model step_model2
+retrain_without_influential <- function(model, data, threshold = NULL) {
+  # Compute Cook's distance
+  cooks_d <- cooks.distance(model)
+  
+  # Default threshold if not provided: 4 / n
+  if (is.null(threshold)) {
+    threshold <- 4 / nrow(data)
+  }
+  
+  # Identify influential rows
+  influential_rows <- which(cooks_d > threshold)
+  
+  # Remove influential rows
+  cleaned_data <- data[-influential_rows, ]
+  
+  # Refit model with original formula
+  updated_model <- lm(formula(model), data = cleaned_data)
+  
+  return(updated_model)
+}
+retrained_model <- retrain_without_influential(model_e,train_data_higher_order)
+summary(retrained_model)
+
+check_residuals(retrained_model)
+
+formula <- as.formula(paste("log(",target,")", "~ .^2")) 
+logarithmic_model <- lm(formula, data = train_data) 
+summary(logarithmic_model)
+
+check_residuals(logarithmic_model)
+
+step_model3 <- step(logarithmic_model,direction = "backward")
+summary(step_model3)
+
+check_residuals(step_model3)
 
 display_model_summary<- function(model) {
   print(summary(model))
   anova(model)
 }
 
-#Summarize analyses
+# Summarize analyses
 
 display_model_summary(model)
 display_model_summary(step_model)
@@ -353,13 +362,24 @@ evaluate_model <- function(model, test_data, target) {
   
   plot(actuals, predictions,
        xlab = "Actual", ylab = "Predicted",
-       main = "Predicted vs Actual - Test Data",
+       main = "Predicted vs. Actual - Test Data",
        pch = 19, col = "steelblue")
   abline(0, 1, col = "red", lwd = 2)
 }
 
+# add interaction terms to test data
+age <- test_data$Value.age - mean(test_data$Value.age)
+bmi <- test_data$Value.bmi - mean(test_data$Value.bmi)
+smoker <- test_data$Value.smoker - mean(test_data$Value.smoker)
+children <- test_data$Value.children - mean(test_data$Value.children)
+test_data$age.bmi <- age*bmi
+test_data$bmi.smoker <- bmi*smoker
+test_data$children.smoker <- children*smoker
 
-Cross_Validate <- function(data,formula) {#Takes data and Returns SSE of full and reduced models
+evaluate_model(retrained_model,test_data,target)
+evaluate_model(model,test_data,target)
+
+Cross_Validate <- function(data,formula) { #Takes data and Returns SSE of full and reduced models
   # partition data into 10 groups
   num_groups <- 10
   print(target)
@@ -380,7 +400,7 @@ Cross_Validate <- function(data,formula) {#Takes data and Returns SSE of full an
   }
   
   for (i in 1:num_groups) {
-    #Fit Full Model
+    # fit full model
     model_full <- lm(formula, train[[i]])
     
     # predict response values
@@ -390,7 +410,7 @@ Cross_Validate <- function(data,formula) {#Takes data and Returns SSE of full an
     test[[i]]$err_full <- (test[[i]][[target]] - test[[i]]$y_hat_full)^2
     sse_full[[i]] <- sum(test[[i]]$err_full)
     
-    #Fit Model without influence 
+    # fit model without influence 
     model_reduced <- retrain_without_influential(model_full,train[[i]])
     
     # predict response values
@@ -409,8 +429,14 @@ Cross_Validate <- function(data,formula) {#Takes data and Returns SSE of full an
   
 }
 
-evaluate_model(retrained_model,test_data,target)
+# add interaction terms to refined data
+age <- refined_data$age - mean(refined_data$age)
+bmi <- refined_data$bmi - mean(refined_data$bmi)
+smoker <- refined_data$smoker - mean(refined_data$smoker)
+children <- refined_data$children - mean(refined_data$children)
+refined_data$age.bmi <- age*bmi
+refined_data$bmi.smoker <- bmi*smoker
+refined_data$children.smoker <- children*smoker
 
-print(Cross_Validate(refined_data,formula(step_model2)))
+print(Cross_Validate(refined_data,formula(retrained_model)))
 print(Cross_Validate(refined_data,formula(model)))
-anova(model, step_model2) # Lack of fit test
