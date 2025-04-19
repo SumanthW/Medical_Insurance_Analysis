@@ -21,7 +21,7 @@ install_if_missing("DataExplorer")
 ## data cleaning and preparation
 
 # load data
-raw_data = read.csv("C:/Users/suman/Downloads/insurance.csv",header=T)
+raw_data = read.csv("insurance.csv",header=T)
 
 # remove four-cat variable
 ins_data <- subset(raw_data,select=-c(region))
