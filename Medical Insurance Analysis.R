@@ -17,7 +17,7 @@ install_if_missing("reshape2")
 install_if_missing("GGally")
 install_if_missing("car")
 install_if_missing("tidyr")
-
+install_if_missing("DataExplorer")
 ## data cleaning and preparation
 
 # load data
@@ -161,9 +161,8 @@ test_data <- test_data %>%
 # Analysis 1 - Correlation matrix & Scatter Plots
 # Select only numeric columns and compute correlation
 print_correlation <- function(refined_data) {
-  cor_matrix <- refined_data %>%
-    select(where(is.numeric)) %>%
-    cor(use = "complete.obs")  
+  numeric_data <- refined_data[sapply(refined_data, is.numeric)]
+  cor_matrix <- cor(numeric_data, use = "complete.obs")  
   
   melted_cor <- melt(cor_matrix)
   
@@ -185,7 +184,7 @@ target <- "Value.charges"
 print_correlation(refined_data)
 print_correlation(scaled_data) #no change in correlation due to scaling
 
-scatter_matrix(train_data,target)
+#scatter_matrix(train_data,target)
 
 # Analysis 2: Fit model and check for null hypothesis that all the parameters are insignificant
 
@@ -285,16 +284,43 @@ check_VIF(model_e,deparse(substitute(model_e)))
 check_residuals(model_e)
 
 # Analysis 6: Check Hii aka Influence Diagnostics
-analyze_influence <- function(model){
+analyze_influence <- function(model, data) {
+  library(DataExplorer)
+  
+  # Compute influence statistics
   influence_stats <- influence.measures(model)
-  summary(influence_stats)
-  nrow(summary(influence_stats))
+  
+  # Get logical matrix of influential flags
+  influence_matrix <- influence_stats$is.inf
+  
+  # Find rows flagged as influential by ANY diagnostic
+  influential_points <- which(apply(influence_matrix, 1, any))
+  
+  # Optionally, Cook's distance threshold
+  cooksD <- cooks.distance(model)
+  cooks_threshold <- 4 / nrow(data)
+  influential_cooks <- which(cooksD > cooks_threshold)
+  
+  # Combine both sets of influential points
+  combined_influentials <- union(influential_points, influential_cooks)
+  
+  # Subset the influential data
+  influential_data <- data[combined_influentials, ]
+  
+  # Generate a report on the influential observations
+  create_report(influential_data)
+  
+  # Optionally return the data for further use
+  return(list(
+    influential_data = influential_data,
+    influential_indices = combined_influentials
+  ))
 }
-analyze_influence(model)
-analyze_influence(step_model)
-analyze_influence(full_model_interaction)
-analyze_influence(step_model2)
-analyze_influence(model_e)
+analyze_influence(model,train_data)
+analyze_influence(step_model,train_data)
+analyze_influence(full_model_interaction,train_data_higher_order)
+analyze_influence(step_model2,train_data_higher_order)
+analyze_influence(model_e,train_data_higher_order)
 nrow(train_data)
 
 # Retraining Model step_model2
@@ -372,9 +398,19 @@ age <- test_data$Value.age - mean(test_data$Value.age)
 bmi <- test_data$Value.bmi - mean(test_data$Value.bmi)
 smoker <- test_data$Value.smoker - mean(test_data$Value.smoker)
 children <- test_data$Value.children - mean(test_data$Value.children)
-test_data$age.bmi <- age*bmi
-test_data$bmi.smoker <- bmi*smoker
-test_data$children.smoker <- children*smoker
+test_data$Value.age.bmi <- age*bmi
+test_data$Value.bmi.smoker <- bmi*smoker
+test_data$Value.children.smoker <- children*smoker
+
+
+# add interaction terms to refined data
+age <- refined_data$age - mean(refined_data$age)
+bmi <- refined_data$bmi - mean(refined_data$bmi)
+smoker <- refined_data$smoker - mean(refined_data$smoker)
+children <- refined_data$children - mean(refined_data$children)
+refined_data$age.bmi <- age*bmi
+refined_data$bmi.smoker <- bmi*smoker
+refined_data$children.smoker <- children*smoker
 
 evaluate_model(retrained_model,test_data,target)
 evaluate_model(model,test_data,target)
@@ -429,14 +465,6 @@ Cross_Validate <- function(data,formula) { #Takes data and Returns SSE of full a
   
 }
 
-# add interaction terms to refined data
-age <- refined_data$age - mean(refined_data$age)
-bmi <- refined_data$bmi - mean(refined_data$bmi)
-smoker <- refined_data$smoker - mean(refined_data$smoker)
-children <- refined_data$children - mean(refined_data$children)
-refined_data$age.bmi <- age*bmi
-refined_data$bmi.smoker <- bmi*smoker
-refined_data$children.smoker <- children*smoker
 
 print(Cross_Validate(refined_data,formula(retrained_model)))
 print(Cross_Validate(refined_data,formula(model)))
